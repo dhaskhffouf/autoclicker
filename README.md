@@ -15,7 +15,7 @@
 
 1. Mở app → "1. Bật dịch vụ trợ năng" → bật AutoClicker.
    - Android 13+ nếu cài APK ngoài Play Store: Cài đặt > Ứng dụng > AutoClicker > ⋮ > **Cho phép cài đặt bị hạn chế**, rồi mới bật được trợ năng.
-2. "2. Hiện bảng điều khiển nổi" → dùng các nút: ＋ Thêm điểm, ⚙ Cài đặt điểm, chế độ chạy, 💾 Bản lưu, ▶ Chạy.
+2. "2. Hiện bảng điều khiển nổi" → dùng các nút: ＋ Thêm điểm, - Xóa điểm, ⚙ Cài đặt điểm, chế độ chạy, 💾 Bản lưu, ▶ Chạy.
 3. Khi đang chạy, các điểm nổi tự "xuyên thấu" để cú bấm đi xuống ứng dụng bên dưới. Bấm ■ Dừng để dừng.
 
 ## Giới hạn cần biết
