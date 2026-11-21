@@ -1,0 +1,54 @@
+name: Release APK
+
+# Đẩy tag dạng v1.0.1 lên GitHub là tự build, ký và tạo Release kèm file APK.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Giải mã keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      - name: Build release
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          gradle :app:assembleRelease \
+            -PappVersion="${GITHUB_REF_NAME#v}" \
+            -PappVersionCode="${{ github.run_number }}"
+
+      - name: Đổi tên APK và tạo SHA-256
+        run: |
+          APK="AutoClicker-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - name: Tạo GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.APK }}
+            ${{ env.APK }}.sha256
+          generate_release_notes: true
