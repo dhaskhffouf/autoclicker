@@ -26,6 +26,7 @@ import android.view.WindowManager
 import android.view.WindowManager.LayoutParams as WLP
 import android.view.accessibility.AccessibilityEvent
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -42,7 +43,7 @@ class ClickService : AccessibilityService() {
         var instance: ClickService? = null
         const val MIN_INTERVAL = 20L
         private const val MARKER_DP = 48
-        private const val BUBBLE_DP = 44
+        private const val BUBBLE_DP = 46
         private const val MAX_SIMULTANEOUS_STROKES = 10
         private val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -136,14 +137,26 @@ class ClickService : AccessibilityService() {
         if (minimized == value) return
         if (value && running) stopRun()
         minimized = value
+
+        val dm = resources.displayMetrics
+        val screenW = dm.widthPixels
+        val screenH = dm.heightPixels
+        val bubbleSize = dp(BUBBLE_DP)
+
         if (minimized) {
-            // Đồng bộ vị trí bong bóng thu nhỏ theo góc trên bên trái của bảng điều khiển hiện tại
             val pLp = panelLp
             val bLp = bubbleLp
             val bView = bubbleView
+            val pView = panel
             if (pLp != null && bLp != null && bView != null) {
-                bLp.x = pLp.x
-                bLp.y = pLp.y
+                val panelW = pView?.width ?: 0
+                if (panelW > 0 && pLp.x + panelW / 2 > screenW / 2) {
+                    bLp.x = pLp.x + panelW - bubbleSize
+                } else {
+                    bLp.x = pLp.x
+                }
+                bLp.x = bLp.x.coerceIn(0, (screenW - bubbleSize).coerceAtLeast(0))
+                bLp.y = pLp.y.coerceIn(0, (screenH - bubbleSize).coerceAtLeast(0))
                 try {
                     wm.updateViewLayout(bView, bLp)
                 } catch (_: Exception) {
@@ -153,13 +166,26 @@ class ClickService : AccessibilityService() {
             markers.values.forEach { it.visibility = View.GONE }
             bubbleView?.visibility = View.VISIBLE
         } else {
-            // Mở rộng bảng điều khiển ngay tại vị trí bong bóng thu nhỏ
             val pLp = panelLp
             val bLp = bubbleLp
             val pView = panel
             if (pLp != null && bLp != null && pView != null) {
-                pLp.x = bLp.x
-                pLp.y = bLp.y
+                pView.measure(
+                    View.MeasureSpec.makeMeasureSpec(screenW, View.MeasureSpec.AT_MOST),
+                    View.MeasureSpec.makeMeasureSpec(screenH, View.MeasureSpec.AT_MOST)
+                )
+                val panelW = if (pView.width > 0) pView.width else pView.measuredWidth
+                val panelH = if (pView.height > 0) pView.height else pView.measuredHeight
+
+                if (bLp.x + bubbleSize / 2 > screenW / 2) {
+                    pLp.x = bLp.x + bubbleSize - panelW
+                } else {
+                    pLp.x = bLp.x
+                }
+
+                pLp.x = pLp.x.coerceIn(0, (screenW - panelW).coerceAtLeast(0))
+                pLp.y = bLp.y.coerceIn(0, (screenH - panelH).coerceAtLeast(0))
+
                 try {
                     wm.updateViewLayout(pView, pLp)
                 } catch (_: Exception) {
@@ -202,17 +228,15 @@ class ClickService : AccessibilityService() {
     @SuppressLint("ClickableViewAccessibility")
     private fun buildBubble() {
         val size = dp(BUBBLE_DP)
-        val bubble = TextView(this).apply {
-            text = "AC"
-            setTextColor(Color.WHITE)
-            textSize = 14f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
+        val bubble = ImageView(this).apply {
+            setImageResource(R.mipmap.ic_launcher)
+            scaleType = ImageView.ScaleType.CENTER_CROP
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(Color.argb(235, 33, 33, 33))
                 setStroke(dp(2), Color.argb(255, 76, 175, 80))
             }
+            clipToOutline = true
             visibility = View.GONE
         }
         val lp = overlayLp(size, size).apply {
