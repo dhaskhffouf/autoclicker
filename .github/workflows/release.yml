@@ -38,10 +38,10 @@ jobs:
             -PappVersion="${GITHUB_REF_NAME#v}" \
             -PappVersionCode="${{ github.run_number }}"
 
-      - name: Đổi tên APK và tạo SHA-256
+      - name: Chuẩn bị APK và tạo SHA-256
         run: |
-          APK="AutoClicker-${GITHUB_REF_NAME}.apk"
-          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          APK="autoclicker.apk"
+          cp app/build/outputs/apk/release/autoclicker.apk "$APK"
           sha256sum "$APK" > "$APK.sha256"
           echo "APK=$APK" >> "$GITHUB_ENV"
 
