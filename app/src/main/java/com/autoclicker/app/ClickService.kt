@@ -33,7 +33,7 @@ import kotlin.math.hypot
 
 /**
  * Dịch vụ trợ năng: vừa vẽ bảng điều khiển + các điểm nổi trên màn hình,
- * vừa thực hiện thao tác chạm bằng dispatchGesture().
+ * vừa thực hiện thao tác chạm đơn hoặc đa điểm đồng thời bằng dispatchGesture().
  */
 class ClickService : AccessibilityService() {
 
@@ -42,6 +42,7 @@ class ClickService : AccessibilityService() {
         var instance: ClickService? = null
         const val MIN_INTERVAL = 20L
         private const val MARKER_DP = 48
+        private const val MAX_SIMULTANEOUS_STROKES = 10
         private val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
     }
@@ -253,7 +254,7 @@ class ClickService : AccessibilityService() {
             v.label = (ids.indexOf(id) + 1).toString()
             v.invalidate()
         }
-        modeBtn?.text = if (profile.runAll) "◎  Chạy: TẤT CẢ điểm" else "◉  Chạy: 1 điểm đã chọn"
+        modeBtn?.text = if (profile.runAll) "◎  Chạy: ĐA ĐIỂM cùng lúc" else "◉  Chạy: 1 điểm đã chọn"
         runBtn?.text = if (running) "■  Dừng" else "▶  Chạy"
         runBtn?.background = rounded(
             if (running) Color.argb(255, 198, 40, 40) else Color.argb(255, 46, 125, 50), dp(10)
@@ -441,40 +442,57 @@ class ClickService : AccessibilityService() {
     }
 
     /**
-     * Bộ lập lịch tuần tự: mỗi lần chỉ bấm 1 điểm đến hạn (tránh các cử chỉ chồng nhau
-     * bị huỷ), mỗi điểm giữ khoảng thời gian riêng của nó.
+     * Bộ lập lịch đa điểm đồng thời: gom tất cả các điểm đến hạn cùng lúc (tối đa 10 điểm)
+     * vào chung một GestureDescription để chạm đồng thời xuống màn hình.
      */
     private val tick = object : Runnable {
         override fun run() {
             if (!running) return
             val now = SystemClock.uptimeMillis()
-            val due = tasks.filter { it.nextAt <= now }.minByOrNull { it.nextAt }
+            // Cho phép sai số 5ms để các điểm có cùng chu kỳ luôn được gom bấm đồng thời
+            val dueList = tasks.filter { it.nextAt <= now + 5L }
+                .sortedBy { it.nextAt }
+                .take(MAX_SIMULTANEOUS_STROKES)
+
             var gap = 0L
-            if (due != null) {
-                val p = due.p
-                dispatchClick(p.x, p.y, p.holdMs)
-                gap = p.holdMs.coerceAtLeast(1L) + 15L
-                due.count++
-                if (p.repeat > 0 && due.count >= p.repeat) {
-                    tasks.remove(due)
-                } else {
-                    due.nextAt = now + p.intervalMs.coerceAtLeast(MIN_INTERVAL)
+            if (dueList.isNotEmpty()) {
+                val pointsToClick = dueList.map { it.p }
+                dispatchClicks(pointsToClick)
+
+                val maxHold = pointsToClick.maxOf { it.holdMs.coerceAtLeast(1L) }
+                gap = maxHold + 15L
+
+                val finishTime = now + maxHold
+                for (due in dueList) {
+                    due.count++
+                    if (due.p.repeat > 0 && due.count >= due.p.repeat) {
+                        tasks.remove(due)
+                    } else {
+                        due.nextAt = finishTime + due.p.intervalMs.coerceAtLeast(MIN_INTERVAL)
+                    }
                 }
             }
+
             if (tasks.isEmpty()) {
                 stopRun()
                 return
             }
+
             val earliest = tasks.minOf { it.nextAt }
             val delay = maxOf(earliest - SystemClock.uptimeMillis(), gap, 1L)
             handler.postDelayed(this, delay)
         }
     }
 
-    private fun dispatchClick(x: Int, y: Int, holdMs: Long) {
-        val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
-        val stroke = GestureDescription.StrokeDescription(path, 0L, holdMs.coerceAtLeast(1L))
-        dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+    private fun dispatchClicks(points: List<ClickPoint>) {
+        if (points.isEmpty()) return
+        val builder = GestureDescription.Builder()
+        for (p in points) {
+            val path = Path().apply { moveTo(p.x.toFloat(), p.y.toFloat()) }
+            val stroke = GestureDescription.StrokeDescription(path, 0L, p.holdMs.coerceAtLeast(1L))
+            builder.addStroke(stroke)
+        }
+        dispatchGesture(builder.build(), null, null)
     }
 
     // ---------------------------------------------------------------- hộp thoại
