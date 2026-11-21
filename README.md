@@ -1,4 +1,4 @@
-# AutoClicker (Android, Kotlin)
+# AutoClicker
 
 Ứng dụng tự động bấm màn hình bằng Dịch vụ trợ năng (AccessibilityService), có bảng điều khiển nổi.
 
@@ -13,32 +13,10 @@
 
 ## Chạy thử
 
-1. Mở thư mục này bằng **Android Studio** (Koala trở lên) → Android Studio sẽ tự tạo Gradle wrapper → Run.
-2. Mở app → "1. Bật dịch vụ trợ năng" → bật AutoClicker.
+1. Mở app → "1. Bật dịch vụ trợ năng" → bật AutoClicker.
    - Android 13+ nếu cài APK ngoài Play Store: Cài đặt > Ứng dụng > AutoClicker > ⋮ > **Cho phép cài đặt bị hạn chế**, rồi mới bật được trợ năng.
-3. "2. Hiện bảng điều khiển nổi" → dùng các nút: ＋ Thêm điểm, ⚙ Cài đặt điểm, chế độ chạy, 💾 Bản lưu, ▶ Chạy.
-4. Khi đang chạy, các điểm nổi tự "xuyên thấu" để cú bấm đi xuống ứng dụng bên dưới. Bấm ■ Dừng để dừng.
-
-## Thiết lập OTA qua GitHub
-
-1. Tạo repo **public** trên GitHub, đẩy mã nguồn lên.
-2. Sửa `app/build.gradle.kts`: `buildConfigField("String", "GITHUB_REPO", "\"ten-ban/ten-repo\"")`.
-3. Tạo keystore ký app (giữ cố định mãi mãi — nếu đổi khoá thì máy không cập nhật đè được):
-   ```
-   keytool -genkeypair -v -keystore release.jks -alias autoclicker -keyalg RSA -keysize 2048 -validity 10000
-   base64 -w0 release.jks     # copy kết quả để dán vào secret
-   ```
-4. Vào GitHub repo > Settings > Secrets and variables > Actions, thêm 4 secret:
-   `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`.
-5. Phát hành bản mới: 
-   ```
-   git tag v1.0.1
-   git push origin v1.0.1
-   ```
-   Workflow `.github/workflows/release.yml` tự build, ký, tạo Release kèm `AutoClicker-v1.0.1.apk` và file `.sha256`.
-6. Trong app bấm **Kiểm tra cập nhật** (app cũng tự kiểm tra khi mở). Tag phải lớn hơn `versionName` đang cài.
-
-> Bản đầu tiên cài trên máy cũng nên là bản đã ký bằng đúng keystore này (tải APK từ Release lần đầu), nếu không bản cập nhật sẽ bị Android từ chối vì khác chữ ký.
+2. "2. Hiện bảng điều khiển nổi" → dùng các nút: ＋ Thêm điểm, ⚙ Cài đặt điểm, chế độ chạy, 💾 Bản lưu, ▶ Chạy.
+3. Khi đang chạy, các điểm nổi tự "xuyên thấu" để cú bấm đi xuống ứng dụng bên dưới. Bấm ■ Dừng để dừng.
 
 ## Giới hạn cần biết
 
