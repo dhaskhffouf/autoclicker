@@ -42,6 +42,7 @@ class ClickService : AccessibilityService() {
         var instance: ClickService? = null
         const val MIN_INTERVAL = 20L
         private const val MARKER_DP = 48
+        private const val BUBBLE_DP = 44
         private const val MAX_SIMULTANEOUS_STROKES = 10
         private val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -57,11 +58,15 @@ class ClickService : AccessibilityService() {
     private val markers = LinkedHashMap<Int, MarkerView>()
     private val markerLps = HashMap<Int, WLP>()
     private var panel: LinearLayout? = null
+    private var panelLp: WLP? = null
+    private var bubbleView: View? = null
+    private var bubbleLp: WLP? = null
     private var runBtn: TextView? = null
     private var modeBtn: TextView? = null
     private val idleViews = mutableListOf<View>()
 
     private var overlayShown = false
+    private var minimized = false
     private var running = false
     private val tasks = mutableListOf<Task>()
 
@@ -97,9 +102,14 @@ class ClickService : AccessibilityService() {
     fun isOverlayShown() = overlayShown
 
     fun showOverlay() {
-        if (overlayShown) return
+        if (overlayShown) {
+            if (minimized) setMinimized(false)
+            return
+        }
         overlayShown = true
+        minimized = false
         buildPanel()
+        buildBubble()
         profile.points.forEach { addMarkerView(it) }
         refreshUi()
     }
@@ -112,9 +122,53 @@ class ClickService : AccessibilityService() {
         markerLps.clear()
         panel?.let { safeRemove(it) }
         panel = null
+        panelLp = null
+        bubbleView?.let { safeRemove(it) }
+        bubbleView = null
+        bubbleLp = null
         idleViews.clear()
         if (overlayShown) persist()
         overlayShown = false
+        minimized = false
+    }
+
+    private fun setMinimized(value: Boolean) {
+        if (minimized == value) return
+        if (value && running) stopRun()
+        minimized = value
+        if (minimized) {
+            // Đồng bộ vị trí bong bóng thu nhỏ theo góc trên bên trái của bảng điều khiển hiện tại
+            val pLp = panelLp
+            val bLp = bubbleLp
+            val bView = bubbleView
+            if (pLp != null && bLp != null && bView != null) {
+                bLp.x = pLp.x
+                bLp.y = pLp.y
+                try {
+                    wm.updateViewLayout(bView, bLp)
+                } catch (_: Exception) {
+                }
+            }
+            panel?.visibility = View.GONE
+            markers.values.forEach { it.visibility = View.GONE }
+            bubbleView?.visibility = View.VISIBLE
+        } else {
+            // Mở rộng bảng điều khiển ngay tại vị trí bong bóng thu nhỏ
+            val pLp = panelLp
+            val bLp = bubbleLp
+            val pView = panel
+            if (pLp != null && bLp != null && pView != null) {
+                pLp.x = bLp.x
+                pLp.y = bLp.y
+                try {
+                    wm.updateViewLayout(pView, pLp)
+                } catch (_: Exception) {
+                }
+            }
+            bubbleView?.visibility = View.GONE
+            panel?.visibility = View.VISIBLE
+            markers.values.forEach { it.visibility = View.VISIBLE }
+        }
     }
 
     private fun safeRemove(v: View) {
@@ -142,6 +196,68 @@ class ClickService : AccessibilityService() {
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+
+    // ---------------------------------------------------------------- bong bóng thu nhỏ
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun buildBubble() {
+        val size = dp(BUBBLE_DP)
+        val bubble = TextView(this).apply {
+            text = "AC"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.argb(235, 33, 33, 33))
+                setStroke(dp(2), Color.argb(255, 76, 175, 80))
+            }
+            visibility = View.GONE
+        }
+        val lp = overlayLp(size, size).apply {
+            x = dp(8)
+            y = dp(120)
+        }
+
+        var downX = 0f
+        var downY = 0f
+        var startX = 0
+        var startY = 0
+        var moved = false
+        bubble.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.rawX; downY = e.rawY
+                    startX = lp.x; startY = lp.y
+                    moved = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = e.rawX - downX
+                    val dy = e.rawY - downY
+                    if (!moved && hypot(dx, dy) > dp(6)) moved = true
+                    if (moved) {
+                        lp.x = startX + dx.toInt()
+                        lp.y = startY + dy.toInt()
+                        try {
+                            wm.updateViewLayout(bubble, lp)
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!moved) {
+                        setMinimized(false)
+                    }
+                }
+            }
+            true
+        }
+
+        bubbleView = bubble
+        bubbleLp = lp
+        wm.addView(bubble, lp)
+    }
 
     // ---------------------------------------------------------------- bảng điều khiển
 
@@ -229,9 +345,26 @@ class ClickService : AccessibilityService() {
         idle("⚙  Cài đặt điểm") { showEditor(null) }
         modeBtn = idle("") { toggleMode() }
         idle("💾  Bản lưu (5)") { showSlots() }
-        idle("✕  Đóng") { hideOverlay() }
+
+        val rowMinClose = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(4) }
+        }
+        val btnMin = panelButton("—  Thu nhỏ", Color.argb(255, 69, 90, 100)) { setMinimized(true) }.apply {
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = dp(3) }
+        }
+        val btnClose = panelButton("✕  Đóng", Color.argb(255, 55, 71, 79)) { hideOverlay() }.apply {
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = dp(3) }
+        }
+        rowMinClose.addView(btnMin)
+        rowMinClose.addView(btnClose)
+        idleViews.add(rowMinClose)
+        col.addView(rowMinClose)
 
         panel = col
+        panelLp = lp
         wm.addView(col, lp)
     }
 
@@ -449,7 +582,6 @@ class ClickService : AccessibilityService() {
         override fun run() {
             if (!running) return
             val now = SystemClock.uptimeMillis()
-            // Cho phép sai số 5ms để các điểm có cùng chu kỳ luôn được gom bấm đồng thời
             val dueList = tasks.filter { it.nextAt <= now + 5L }
                 .sortedBy { it.nextAt }
                 .take(MAX_SIMULTANEOUS_STROKES)
